@@ -1,0 +1,16 @@
+.snakemake/
+data/ref_genome/*
+data/trimmed_fastq/*
+results/sam/*
+results/bam/*
+results/bcf/*
+results/vcf/*
+!data/ref_genome/.gitkeep
+!data/trimmed_fastq/.gitkeep
+!results/sam/.gitkeep
+!results/bam/.gitkeep
+!results/bcf/.gitkeep
+!results/vcf/.gitkeep
+__pycache__/
+*.pyc
+.pytest_cache/

@@ -1,0 +1,104 @@
+"""
+Snakemake variant-calling pipeline — E. coli long-term evolution dataset (Lenski lab / Data Carpentry).
+
+Real dataset: 3 actual Illumina paired-end sequencing runs of E. coli strain Ara-3
+at 3 timepoints (5,000 / 15,000 / 50,000 generations), aligned against the real
+E. coli B str. REL606 reference genome (GenBank CP000819.1).
+
+Reference genome:
+  ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/017/985/GCA_000017985.1_ASM1798v1/GCA_000017985.1_ASM1798v1_genomic.fna.gz
+
+Trimmed test FASTQ subset (small, for fast pipeline runs):
+  https://ndownloader.figshare.com/files/14418248
+
+Published benchmark variant counts for this exact dataset (Data Carpentry,
+"Wrangling Genomics" lesson) — use these to sanity-check your own run:
+  SRR2589044 (5,000 gen)  -> 10 variants
+  SRR2584863 (15,000 gen) -> 25 variants
+  SRR2584866 (50,000 gen) -> 766 variants
+
+The 50,000-generation sample has far more variants because this population
+(Ara-3) evolved a hypermutator phenotype: a nonsense mutation (Q606*) in
+the mutS mismatch-repair gene at REL606 genome position 2,753,768, which
+arose around generation 34,750 (Favate et al., "Divergent Evolution of
+Mutation Rates and Biases in the Long-Term Evolution Experiment with
+Escherichia coli", PMC7523724, Table 1). This means:
+  - the 5,000 and 15,000-generation samples predate the mutS mutation
+    (should NOT carry it)
+  - the 50,000-generation sample postdates it (should carry it)
+See tests/validate_results.py, which checks not just the total variant
+count but whether this exact, published causal mutation is actually
+detected at the expected position in the 50,000-generation sample's VCF.
+"""
+
+SAMPLES = ["SRR2589044", "SRR2584863", "SRR2584866"]
+REF = "data/ref_genome/ecoli_rel606.fasta"
+
+rule all:
+    input:
+        expand("results/vcf/{sample}_final_variants.vcf", sample=SAMPLES)
+
+rule bwa_index:
+    input:
+        REF
+    output:
+        REF + ".bwt"
+    shell:
+        "bwa index {input}"
+
+rule bwa_mem:
+    input:
+        ref=REF,
+        idx=REF + ".bwt",
+        r1="data/trimmed_fastq/{sample}_1.trim.sub.fastq",
+        r2="data/trimmed_fastq/{sample}_2.trim.sub.fastq"
+    output:
+        "results/sam/{sample}.aligned.sam"
+    shell:
+        "bwa mem {input.ref} {input.r1} {input.r2} > {output}"
+
+rule sam_to_bam:
+    input:
+        "results/sam/{sample}.aligned.sam"
+    output:
+        "results/bam/{sample}.aligned.bam"
+    shell:
+        "samtools view -S -b {input} > {output}"
+
+rule sort_bam:
+    input:
+        "results/bam/{sample}.aligned.bam"
+    output:
+        "results/bam/{sample}.aligned.sorted.bam"
+    shell:
+        "samtools sort -o {output} {input}"
+
+rule index_bam:
+    input:
+        "results/bam/{sample}.aligned.sorted.bam"
+    output:
+        "results/bam/{sample}.aligned.sorted.bam.bai"
+    shell:
+        "samtools index {input}"
+
+rule call_variants:
+    input:
+        ref=REF,
+        bam="results/bam/{sample}.aligned.sorted.bam",
+        bai="results/bam/{sample}.aligned.sorted.bam.bai"
+    output:
+        bcf="results/bcf/{sample}_raw.bcf",
+        vcf="results/vcf/{sample}_variants.vcf"
+    shell:
+        """
+        bcftools mpileup -O b -o {output.bcf} -f {input.ref} {input.bam}
+        bcftools call --ploidy 1 -m -v -o {output.vcf} {output.bcf}
+        """
+
+rule filter_variants:
+    input:
+        "results/vcf/{sample}_variants.vcf"
+    output:
+        "results/vcf/{sample}_final_variants.vcf"
+    shell:
+        "vcfutils.pl varFilter {input} > {output}"
