@@ -1,5 +1,7 @@
 # Variant Calling Pipeline: E. coli Long-Term Evolution Experiment
 
+![Tests](https://github.com/SourabhyaK/variant-calling/actions/workflows/tests.yml/badge.svg)
+
 An end-to-end NGS variant-calling pipeline (QC → alignment → variant calling)
 applied to real sequencing data from Richard Lenski's E. coli Long-Term
 Evolution Experiment (LTEE) — and validated not just against a published
